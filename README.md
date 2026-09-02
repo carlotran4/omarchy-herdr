@@ -5,16 +5,13 @@
 
 See every coding agent at a glance. Jump to the one that needs you most.
 
-[![Herdr for Omarchy product demo](docs/hero.png)](docs/herdr-for-omarchy.mp4)
-
-_Click the preview to watch the 1080p product demo._
-
 A native [Omarchy](https://omarchy.org/) bar plugin for [Herdr](https://herdr.dev/), built with QML and Quickshell. It talks directly to Herdr's Unix socket, updates on events instead of polling, and follows your active Omarchy theme.
 
 ## Highlights
 
-- **Live state counters** for blocked, done, working, unknown, and idle agents.
-- **One-click priority focus**: blocked first, then done, working, unknown, and idle.
+- **Companion state counters** designed to sit beside Omarchy's existing Agents icon.
+- **Live states** for blocked, done, working, unknown, and idle agents.
+- **Direct priority focus**: blocked first, then done, working, unknown, and idle.
 - **Agent dashboard** with names, working directories, and individual jump targets.
 - **Event-driven updates** through Herdr's `events.subscribe` API.
 - **Native Omarchy design** using the shell's typography, spacing, popup, and theme tokens.
@@ -28,7 +25,10 @@ Requires Omarchy 4.0+, Quickshell 0.3+, and Herdr 0.8+.
 
 ```bash
 omarchy plugin add https://github.com/carlotran4/omarchy-herdr --enable
+omarchy bar move carlotran4.herdr --after omarchy.agents
 ```
+
+By default, Herdr shows only its colored counters so they read as an extension of Omarchy's existing Agents icon. Enable **Show separate Herdr icon** in the widget settings if you prefer a standalone widget.
 
 The installer validates the manifest, asks where to place the widget, and keeps the Git checkout under `~/.config/omarchy/plugins/carlotran4.herdr/` so it can be updated later:
 
@@ -40,9 +40,9 @@ omarchy plugin update carlotran4.herdr
 
 | Interaction | Action |
 |---|---|
-| Left-click | Focus the highest-priority agent |
-| Right-click | Open the agent dashboard |
-| Middle-click | Refresh now |
+| Left-click counters | Open the active-agent dashboard |
+| Middle-click counters | Focus the highest-priority agent |
+| Right-click counters | Refresh now |
 | Click an agent | Focus that exact agent |
 | Enter in the dashboard | Focus the highest-priority agent |
 | Escape | Close the dashboard |
@@ -58,7 +58,8 @@ Open Omarchy's bar settings and select **Herdr**, or edit its entry in `~/.confi
   "id": "carlotran4.herdr",
   "session": "work",
   "raiseWindow": true,
-  "windowTitle": "herdr"
+  "windowTitle": "herdr",
+  "showIcon": false
 }
 ```
 
@@ -83,7 +84,7 @@ For local dogfooding, copy the checkout into the user plugin directory, rescan, 
 
 ## Legacy Waybar module
 
-The original Python Waybar implementation remains available in Git history and the `v0.1.1` release. Version 1.0 is the native Omarchy/Quickshell port.
+The original Python Waybar implementation remains available in Git history and the `v0.1.1` release. Version 1.x is the native Omarchy/Quickshell port.
 
 ## License
 

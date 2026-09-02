@@ -110,7 +110,7 @@ function tooltip(agents, online, home) {
     lines.push(STATUS_ICONS[status] + "  " + STATUS_LABELS[status] + "  " + agentLabel(rows[i]))
     if (cwd !== "") lines.push("    " + cwd)
   }
-  lines.push("", "Left-click: focus what needs you · Right-click: open dashboard")
+  lines.push("", "Left-click: open dashboard · Middle-click: focus priority · Right-click: refresh")
   return lines.join("\n")
 }
 

@@ -20,6 +20,7 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color surface: Color.popups.background
   readonly property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.52)
+  readonly property bool iconVisible: vertical || setting("showIcon", false)
   readonly property var statusColors: ({
     blocked: "#f7768e",
     done: "#9ece6a",
@@ -28,6 +29,7 @@ Panel {
     idle: "#737aa2"
   })
 
+  visible: iconVisible || !model.online || model.agents.length > 0
   implicitWidth: vertical ? barSize : Math.max(barSize, barContent.implicitWidth + Style.space(12))
   implicitHeight: barSize
 
@@ -81,11 +83,21 @@ Panel {
       spacing: Style.space(7)
 
       Text {
+        visible: root.iconVisible
         text: "󰚩"
         color: root.foreground
         opacity: model.online ? 1 : 0.45
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.bar.iconFont
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Rectangle {
+        visible: !root.iconVisible && !model.online
+        width: visible ? Style.space(6) : 0
+        height: width
+        radius: width / 2
+        color: root.dim
         anchors.verticalCenter: parent.verticalCenter
       }
 
@@ -130,9 +142,9 @@ Panel {
       onExited: if (root.bar) root.bar.hideTooltip(button)
       onClicked: function(mouse) {
         if (root.bar) root.bar.hideTooltip(button)
-        if (mouse.button === Qt.RightButton) root.toggle()
-        else if (mouse.button === Qt.MiddleButton) model.refresh()
-        else model.focusAttention()
+        if (mouse.button === Qt.RightButton) model.refresh()
+        else if (mouse.button === Qt.MiddleButton) model.focusAttention()
+        else root.toggle()
       }
     }
   }

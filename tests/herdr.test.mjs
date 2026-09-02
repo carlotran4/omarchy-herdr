@@ -39,6 +39,7 @@ assert.equal(Herdr.socketPath("/home/carlo", "work", "~/custom.sock"), "/home/ca
 assert.equal(Herdr.subscriptions(agents).filter(item => item.type === "pane.agent_status_changed").length, 5)
 assert.equal(Herdr.paneKey([{ pane_id: "b" }, { pane_id: "a" }]), "a\nb")
 assert.match(Herdr.tooltip([agents[2]], true, "/home/carlo"), /Blocked  blocked-agent/)
+assert.match(Herdr.tooltip([agents[2]], true, "/home/carlo"), /Left-click: open dashboard/)
 assert.match(Herdr.tooltip([], false, "/home/carlo"), /offline/)
 
 console.log("Herdr model tests passed")
