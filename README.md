@@ -1,172 +1,89 @@
-# waybar-herdr
+# Herdr for Omarchy
 
-[![CI](https://github.com/carlotran4/waybar-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/carlotran4/waybar-herdr/actions/workflows/ci.yml)
+[![CI](https://github.com/carlotran4/omarchy-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/carlotran4/omarchy-herdr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An event-driven [Waybar](https://github.com/Alexays/Waybar) module for [Herdr](https://herdr.dev/). See every coding agent's state at a glance and jump to the agent that needs attention most.
+See every coding agent at a glance. Jump to the one that needs you most.
 
-[![waybar-herdr responding to live Herdr agent state](docs/demo.gif)](docs/demo.mp4)
+[![Herdr for Omarchy product demo](docs/hero.png)](docs/herdr-for-omarchy.mp4)
 
-_Click the animation to open the full-quality MP4._
+_Click the preview to watch the 1080p product demo._
 
-## Features
+A native [Omarchy](https://omarchy.org/) bar plugin for [Herdr](https://herdr.dev/), built with QML and Quickshell. It talks directly to Herdr's Unix socket, updates on events instead of polling, and follows your active Omarchy theme.
 
-- Event-driven updates over Herdr's Unix socket—no polling loop.
-- Harness-agnostic states normalized by Herdr.
-- Compact colored counters for blocked, done, working, unknown, and idle agents.
-- Detailed tooltip with agent names and working directories.
-- One-click focus for the highest-priority agent.
-- Automatic reconnect with bounded exponential backoff.
-- Default, named-session, and explicit socket support.
-- Optional Hyprland window focusing; status reporting works with any Waybar compositor.
-- Python standard library only at runtime.
+## Highlights
 
-## Requirements
-
-- Linux or another platform with Unix domain sockets.
-- Herdr with the `agent.list`, `agent.focus`, and `events.subscribe` socket APIs.
-  Tested with Herdr 0.7.5 (protocol 17).
-- Waybar with continuous custom-module support. Tested with Waybar 0.15.0.
-- Python 3.10 or newer.
-- A Nerd Font for the default icons, or custom icons through environment variables.
-- Optional: Hyprland and `hyprctl` to raise the existing Herdr window after focusing a pane.
-
-Install the official Herdr integration for each harness you use for the most reliable lifecycle state. See [Herdr integrations](https://herdr.dev/docs/integrations/).
+- **Live state counters** for blocked, done, working, unknown, and idle agents.
+- **One-click priority focus**: blocked first, then done, working, unknown, and idle.
+- **Agent dashboard** with names, working directories, and individual jump targets.
+- **Event-driven updates** through Herdr's `events.subscribe` API.
+- **Native Omarchy design** using the shell's typography, spacing, popup, and theme tokens.
+- **Automatic reconnect** after Herdr or the shell restarts.
+- **Default, named-session, and explicit-socket support.**
+- **No runtime scripts or polling processes**; the widget connects from Quickshell itself.
 
 ## Install
 
-Until the first PyPI release, install directly from GitHub:
+Requires Omarchy 4.0+, Quickshell 0.3+, and Herdr 0.8+.
 
-```sh
-pipx install git+https://github.com/carlotran4/waybar-herdr
+```bash
+omarchy plugin add https://github.com/carlotran4/omarchy-herdr --enable
 ```
 
-For development:
+The installer validates the manifest, asks where to place the widget, and keeps the Git checkout under `~/.config/omarchy/plugins/carlotran4.herdr/` so it can be updated later:
 
-```sh
-git clone https://github.com/carlotran4/waybar-herdr
-cd waybar-herdr
-uv sync --dev
+```bash
+omarchy plugin update carlotran4.herdr
 ```
 
-## Configure Waybar
+## Use
 
-Add the module definition to `~/.config/waybar/config.jsonc`:
+| Interaction | Action |
+|---|---|
+| Left-click | Focus the highest-priority agent |
+| Right-click | Open the agent dashboard |
+| Middle-click | Refresh now |
+| Click an agent | Focus that exact agent |
+| Enter in the dashboard | Focus the highest-priority agent |
+| Escape | Close the dashboard |
 
-```jsonc
-"custom/herdr": {
-  "exec": "waybar-herdr watch",
-  "return-type": "json",
-  "restart-interval": 2,
-  "hide-empty-text": true,
-  "exec-on-event": false,
-  "on-click": "waybar-herdr focus-attention",
-  "tooltip": true
+Focusing calls Herdr's `agent.focus`. On Hyprland, the plugin can also raise an existing Herdr window; it never creates a terminal, pane, or agent.
+
+## Configure
+
+Open Omarchy's bar settings and select **Herdr**, or edit its entry in `~/.config/omarchy/shell.json`:
+
+```json
+{
+  "id": "carlotran4.herdr",
+  "session": "work",
+  "raiseWindow": true,
+  "windowTitle": "herdr"
 }
 ```
 
-Compose it wherever it belongs in your bar:
+Set `socketPath` to override session resolution entirely. Resolution otherwise follows:
 
-```jsonc
-"modules-right": ["custom/herdr", "network", "battery"]
+- `default` → `~/.config/herdr/herdr.sock`
+- a named session → `~/.config/herdr/sessions/<name>/herdr.sock`
+
+## Develop
+
+```bash
+omarchy plugin validate .
+node --test tests/herdr.test.mjs
+qmllint -I /usr/share/omarchy/shell BarWidget.qml HerdrModel.qml
 ```
 
-Then copy or adapt [`examples/style.css`](examples/style.css) and restart Waybar.
+For local dogfooding, copy the checkout into the user plugin directory, rescan, and enable it. Never modify `/usr/share/omarchy/`.
 
-The module intentionally does not edit your Waybar configuration. Placement, spacing, colors, and surrounding modules remain yours.
+## Architecture
 
-## Agent priority
+`HerdrModel.qml` owns two native `Quickshell.Io.Socket` connections: short request sockets for `agent.list` and `agent.focus`, plus a long-lived event subscription. Events invalidate the snapshot and trigger a fresh normalized `agent.list`, avoiding a second state model inside the plugin. `Herdr.js` contains deterministic priority, formatting, socket resolution, and subscription helpers covered by Node tests.
 
-Clicking chooses the first available state in this order:
+## Legacy Waybar module
 
-1. blocked
-2. done
-3. working
-4. unknown
-5. idle
-
-When agents share a state, the most recently changed agent wins. `agent.focus` changes Herdr's existing focused pane; it does not create a pane or terminal window.
-
-With `--focus-backend auto`, an existing Herdr window is also raised when running under Hyprland. On other compositors, the pane is focused inside Herdr without trying to create or raise a window.
-
-```sh
-waybar-herdr focus-attention --focus-backend none
-waybar-herdr focus-attention --focus-backend hyprland --window-title herdr
-```
-
-## Sessions and sockets
-
-Use a named Herdr session:
-
-```jsonc
-"exec": "waybar-herdr --session work watch",
-"on-click": "waybar-herdr --session work focus-attention"
-```
-
-Or set `HERDR_SESSION=work`. Resolution order is explicit `--socket`, explicit `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`, then the default socket.
-
-## Customize icons and colors
-
-Defaults use JetBrains Mono Nerd Font-compatible glyphs and a Tokyo Night-inspired palette. Override any value in the Waybar `exec` environment:
-
-| Variable | Purpose |
-|---|---|
-| `WAYBAR_HERDR_ICON` | Main agent icon |
-| `WAYBAR_HERDR_BLOCKED_ICON` | Blocked icon |
-| `WAYBAR_HERDR_DONE_ICON` | Done icon |
-| `WAYBAR_HERDR_WORKING_ICON` | Working icon |
-| `WAYBAR_HERDR_UNKNOWN_ICON` | Unknown icon |
-| `WAYBAR_HERDR_IDLE_ICON` | Idle icon |
-| `WAYBAR_HERDR_<STATE>_COLOR` | Inline Pango color for a state |
-| `WAYBAR_HERDR_FOCUS_BACKEND` | `auto`, `hyprland`, or `none` |
-| `WAYBAR_HERDR_WINDOW_TITLE` | Herdr title matched by the Hyprland backend |
-
-Example:
-
-```jsonc
-"exec": "WAYBAR_HERDR_BLOCKED_COLOR='#ff5555' waybar-herdr watch"
-```
-
-## CLI
-
-```text
-waybar-herdr [--socket PATH] [--session NAME] watch
-waybar-herdr [--socket PATH] [--session NAME] once
-waybar-herdr [--socket PATH] [--session NAME] focus-attention [options]
-```
-
-`once` is useful when validating Herdr connectivity and your font:
-
-```sh
-waybar-herdr once | jq
-```
-
-## How it works
-
-On startup, the module calls `agent.list`, emits one Waybar JSON object, and subscribes to pane lifecycle events plus status changes for known agent panes. Events invalidate the current snapshot, so the module asks Herdr for a fresh normalized rollup. When the agent pane set changes, it rebuilds the subscription. If Herdr restarts, the module displays an offline state and reconnects with exponential backoff.
-
-Waybar treats an `exec` command without `interval` or `signal` as a continuous script. `restart-interval` lets Waybar recover if the process itself exits.
-
-## Development
-
-```sh
-uv sync --dev
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest --cov=waybar_herdr --cov-report=term-missing
-uv build
-uv run twine check dist/*
-```
-
-CI runs linting, tests across supported Python versions, coverage, and package validation.
-
-## Troubleshooting
-
-- **Offline icon:** run `herdr status` and `waybar-herdr once`.
-- **Wrong state:** run `herdr agent explain <target>` and install the harness integration.
-- **Click changes the pane but does not raise the window:** use Hyprland or set up an external compositor-specific focus command; window raising is currently implemented only for Hyprland.
-- **Missing icons:** install a Nerd Font or override the icon environment variables.
-- **Named session missing:** pass `--session` before the subcommand.
+The original Python Waybar implementation remains available in Git history and the `v0.1.1` release. Version 1.0 is the native Omarchy/Quickshell port.
 
 ## License
 

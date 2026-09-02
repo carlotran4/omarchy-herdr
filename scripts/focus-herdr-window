@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+
+title="${1:-herdr}"
+command -v hyprctl >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+
+address=$(hyprctl clients -j | jq -r --arg title "${title,,}" '
+  [ .[]
+    | select(.mapped == true)
+    | select((.title | ascii_downcase) == $title or (.title | ascii_downcase | startswith($title + " ")))
+  ]
+  | sort_by(.focusHistoryID // 2147483647)
+  | .[0].address // empty
+')
+
+[[ -z "$address" ]] || hyprctl eval \
+  "hl.dispatch(hl.dsp.focus({ window = \"address:$address\" }))" >/dev/null

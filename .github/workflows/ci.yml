@@ -2,34 +2,27 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-      - run: uv sync --dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run pytest --cov=waybar_herdr --cov-report=term-missing
-
-  package:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
-      - run: uv build
-      - run: uvx twine check dist/*
+      - uses: actions/checkout@v6
+      - name: Validate manifest
+        run: |
+          jq -e . manifest.json >/dev/null
+          test "$(jq -r .schemaVersion manifest.json)" = 1
+          test "$(jq -r .id manifest.json)" = carlotran4.herdr
+          test -f "$(jq -r .entryPoints.barWidget manifest.json)"
+          if find . -path ./.git -prune -o -type l -print -quit | grep -q .; then
+            echo "Plugin repositories may not contain symlinks" >&2
+            exit 1
+          fi
+      - name: Test model logic
+        run: node --test tests/herdr.test.mjs
+      - name: Validate helper scripts
+        run: bash -n scripts/focus-herdr-window

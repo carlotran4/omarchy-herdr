@@ -1,4 +1,0 @@
-include CHANGELOG.md
-include CONTRIBUTING.md
-graft examples
-graft docs
