@@ -16,6 +16,8 @@ QtObject {
   property bool commandBusy: false
   property string subscribedPaneKey: ""
 
+  readonly property var commandSocket: commandSocketLoader.item
+  readonly property var subscriptionSocket: subscriptionSocketLoader.item
   readonly property var counts: Herdr.counts(agents)
   readonly property var sortedAgents: Herdr.sortedAgents(agents)
   readonly property var attentionAgent: Herdr.attentionAgent(agents)
@@ -37,6 +39,8 @@ QtObject {
 
   function startNextRequest() {
     if (commandBusy || requestQueue.length === 0 || socketPath === "") return
+    if (!commandSocket) commandSocketLoader.active = true
+    if (!commandSocket) return
     var next = requestQueue.slice()
     activeRequest = next.shift()
     requestQueue = next
@@ -45,7 +49,7 @@ QtObject {
   }
 
   function sendActiveRequest() {
-    if (!commandSocket.connected || !activeRequest) return
+    if (!commandSocket || !commandSocket.connected || !activeRequest) return
     commandTimeout.restart()
     commandSocket.write(JSON.stringify({
       id: activeRequest.id,
@@ -59,7 +63,7 @@ QtObject {
     commandTimeout.stop()
     activeRequest = null
     commandBusy = false
-    commandSocket.connected = false
+    if (commandSocket) commandSocket.connected = false
     commandKick.restart()
   }
 
@@ -81,8 +85,10 @@ QtObject {
   function reconnect() {
     reconnectTimer.stop()
     subscriptionRetry.stop()
-    commandSocket.connected = false
-    subscriptionSocket.connected = false
+    if (commandSocket) commandSocket.connected = false
+    if (subscriptionSocket) subscriptionSocket.connected = false
+    commandSocketLoader.active = false
+    subscriptionSocketLoader.active = false
     activeRequest = null
     commandBusy = false
     requestQueue = []
@@ -100,8 +106,17 @@ QtObject {
     activeRequest = null
     commandBusy = false
     requestQueue = []
-    commandSocket.connected = false
+    if (commandSocket) commandSocket.connected = false
+    // Quickshell retains a failed QLocalSocket after ConnectionRefusedError.
+    // Recreate the wrapper so the next retry opens a genuinely new socket.
+    commandSocketLoader.active = false
     if (!reconnectTimer.running) reconnectTimer.start()
+  }
+
+  function retrySubscription() {
+    if (subscriptionSocket) subscriptionSocket.connected = false
+    subscriptionSocketLoader.active = false
+    if (online && !subscriptionRetry.running) subscriptionRetry.start()
   }
 
   function handleCommandLine(line) {
@@ -139,14 +154,14 @@ QtObject {
 
   function rebuildSubscription() {
     var nextKey = Herdr.paneKey(agents)
-    if (subscriptionSocket.connected && nextKey === subscribedPaneKey) return
+    if (subscriptionSocket && subscriptionSocket.connected && nextKey === subscribedPaneKey) return
     subscribedPaneKey = nextKey
-    subscriptionSocket.connected = false
+    if (subscriptionSocket) subscriptionSocket.connected = false
     subscriptionKick.restart()
   }
 
   function sendSubscription() {
-    if (!subscriptionSocket.connected) return
+    if (!subscriptionSocket || !subscriptionSocket.connected) return
     var payload = {
       id: requestId("subscribe"),
       method: "events.subscribe",
@@ -166,8 +181,7 @@ QtObject {
     }
     if (payload.error) {
       protocolError(String(payload.error.message || "Herdr subscription failed"))
-      subscriptionSocket.connected = false
-      subscriptionRetry.restart()
+      retrySubscription()
     } else if (!payload.id) {
       refresh()
     }
@@ -175,33 +189,32 @@ QtObject {
 
   onSocketPathChanged: reconnect()
 
-  property Socket commandSocket: Socket {
-    path: root.socketPath
-    parser: SplitParser { onRead: function(line) { root.handleCommandLine(line) } }
+  property Loader commandSocketLoader: Loader {
+    active: true
+    sourceComponent: Socket {
+      path: root.socketPath
+      parser: SplitParser { onRead: function(line) { root.handleCommandLine(line) } }
 
-    // Herdr intentionally closes request sockets after one response. A short
-    // timeout, rather than PeerClosedError, distinguishes that normal EOF from
-    // a request that never answered.
-    onConnectedChanged: if (connected) root.sendActiveRequest()
-    onError: function(errorCode) {
-      // PeerClosedError after a valid one-shot response is normal and arrives
-      // while the response timeout is active. A connect failure never starts
-      // that timer and should enter bounded reconnect immediately.
-      if (root.commandBusy && !root.commandTimeout.running) root.scheduleReconnect()
+      // Herdr intentionally closes request sockets after one response.
+      onConnectedChanged: if (connected) root.sendActiveRequest()
+      onError: function(errorCode) {
+        if (root.commandBusy) root.scheduleReconnect()
+      }
     }
   }
 
-  property Socket subscriptionSocket: Socket {
-    path: root.socketPath
-    parser: SplitParser { onRead: function(line) { root.handleSubscriptionLine(line) } }
+  property Loader subscriptionSocketLoader: Loader {
+    active: true
+    sourceComponent: Socket {
+      path: root.socketPath
+      parser: SplitParser { onRead: function(line) { root.handleSubscriptionLine(line) } }
 
-    onConnectedChanged: {
-      if (connected) root.sendSubscription()
-      else if (root.online && !root.subscriptionRetry.running && !root.subscriptionKick.running)
-        root.subscriptionRetry.start()
-    }
-    onError: function(errorCode) {
-      if (root.online && !root.subscriptionRetry.running) root.subscriptionRetry.start()
+      onConnectedChanged: {
+        if (connected) root.sendSubscription()
+        else if (root.online && !root.subscriptionRetry.running && !root.subscriptionKick.running)
+          root.subscriptionRetry.start()
+      }
+      onError: function(errorCode) { root.retrySubscription() }
     }
   }
 
@@ -216,17 +229,19 @@ QtObject {
     repeat: false
     onTriggered: {
       root.reconnectDelayMs = Math.min(root.reconnectDelayMs * 2, 30000)
+      root.commandSocketLoader.active = true
       root.refresh()
     }
   }
 
   property Timer reconnectKick: Timer {
-    // Socket.path changes only take effect after the prior connection is fully
-    // down. One short tick keeps session/settings switches from reconnecting
-    // to the old path.
     interval: 50
     repeat: false
-    onTriggered: root.refresh()
+    onTriggered: {
+      root.commandSocketLoader.active = true
+      root.subscriptionSocketLoader.active = true
+      root.refresh()
+    }
   }
 
   property Timer commandKick: Timer {
@@ -238,13 +253,21 @@ QtObject {
   property Timer subscriptionKick: Timer {
     interval: 0
     repeat: false
-    onTriggered: if (root.online && root.socketPath !== "") root.subscriptionSocket.connected = true
+    onTriggered: {
+      if (!root.online || root.socketPath === "") return
+      root.subscriptionSocketLoader.active = true
+      if (root.subscriptionSocket) root.subscriptionSocket.connected = true
+    }
   }
 
   property Timer subscriptionRetry: Timer {
     interval: 1000
     repeat: false
-    onTriggered: if (root.online && root.socketPath !== "") root.subscriptionSocket.connected = true
+    onTriggered: {
+      if (!root.online || root.socketPath === "") return
+      root.subscriptionSocketLoader.active = true
+      if (root.subscriptionSocket) root.subscriptionSocket.connected = true
+    }
   }
 
   Component.onCompleted: if (socketPath !== "") refresh()

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "carlotran4.herdr",
   "name": "Herdr",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "Carlo Tran",
   "license": "MIT",
   "description": "Live coding-agent status and one-click focus for the Omarchy bar.",
